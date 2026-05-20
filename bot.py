@@ -206,22 +206,86 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Invalid Transaction ID")
 
 async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin cleanup - restrict users without subscription + send DM"""
     user_id = update.effective_user.id
+    
+    # CHECK ADMIN PERMISSION
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("❌ No permission")
         return
-    await update.message.reply_text("⏳ Scanning PREMIUM members...")
-    members = get_premium_members()
-    restricted = 0
-    for member_id in members:
-        if get_subscription_status(member_id) != "active":
-            try:
-                await context.bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, member_id, ChatPermissions(can_send_messages=False))
-                await context.bot.send_message(member_id, f"🚨 Subscription expired!\n\nOptions:\n🆓 FREE: {FREE_GROUP_LINK}\n💳 RENEW: {PAYPAL_PAYMENT_LINK}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("FREE", url=FREE_GROUP_LINK)], [InlineKeyboardButton("RENEW", url=PAYPAL_PAYMENT_LINK)]]))
-                restricted += 1
-            except:
-                pass
-    await update.message.reply_text(f"✅ DONE\n👥 Members: {len(members)}\n❌ Restricted: {restricted}")
+    
+    await update.message.reply_text("⏳ Scanning PREMIUM members from database...")
+    
+    try:
+        # GET MEMBERS FROM DATABASE
+        members = get_premium_members()
+        
+        if not members:
+            await update.message.reply_text(
+                "⚠️ No members in database!\n\n"
+                "Members get added when they:\n"
+                "1. Join PREMIUM group via /start → PayPal payment\n"
+                "2. Or manually added to group_members table\n\n"
+                "Current PREMIUM group members: 0"
+            )
+            return
+        
+        restricted_count = 0
+        notified_count = 0
+        
+        # PROCESS EACH MEMBER
+        for member_id in members:
+            status = get_subscription_status(member_id)
+            
+            # IF NO ACTIVE SUBSCRIPTION → RESTRICT + NOTIFY
+            if status != "active":
+                try:
+                    # 1️⃣ RESTRICT in PREMIUM group
+                    await context.bot.restrict_chat_member(
+                        PREMIUM_GROUP_CHAT_ID, member_id,
+                        ChatPermissions(can_send_messages=False)
+                    )
+                    restricted_count += 1
+                    logger.info(f"✅ Restricted user {member_id}")
+                    
+                except Exception as e:
+                    logger.warning(f"Could not restrict {member_id}: {e}")
+                
+                try:
+                    # 2️⃣ SEND DM with options
+                    await context.bot.send_message(
+                        member_id,
+                        f"🚨 **SUBSCRIPTION EXPIRED**\n\n"
+                        f"Your access to PREMIUM group has been revoked.\n\n"
+                        f"**OPTIONS:**\n"
+                        f"1️⃣ Join FREE group (free content)\n"
+                        f"2️⃣ Renew PREMIUM (5 EUR/month)\n\n"
+                        f"Sorry! 🙏",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🆓 JOIN FREE", url=FREE_GROUP_LINK)],
+                            [InlineKeyboardButton("💳 RENEW NOW", url=PAYPAL_PAYMENT_LINK)]
+                        ])
+                    )
+                    notified_count += 1
+                    logger.info(f"✅ DM sent to user {member_id}")
+                    
+                except Exception as e:
+                    logger.warning(f"Could not send DM to {member_id}: {e}")
+        
+        # 3️⃣ SEND ADMIN REPORT
+        await update.message.reply_text(
+            f"✅ **CLEANUP COMPLETED**\n\n"
+            f"👥 Members scanned: {len(members)}\n"
+            f"❌ Restricted: {restricted_count}\n"
+            f"📢 Notified: {notified_count}\n\n"
+            f"Expired users moved to FREE group with renewal link.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"cleanup_cmd error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def send_reminders(app):
     subs = []

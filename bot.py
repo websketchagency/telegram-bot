@@ -171,7 +171,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status - Check status\n"
         "/info - Premium info\n"
         "/add_me - Register for cleanup tracking\n"
-        "/cleanup - Admin: cleanup"
+        "/cleanup - Admin: manual cleanup"
     )
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -192,7 +192,36 @@ async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
     add_group_member(user_id, PREMIUM_GROUP_CHAT_ID)
-    await update.message.reply_text("✅ You're registered! You'll be checked in auto cleanup")
+    await update.message.reply_text("✅ You're registered! Auto cleanup will track you.")
+
+async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Send tracking message to PREMIUM group"""
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("❌ No permission")
+        return
+    
+    await update.message.reply_text("📢 Sending tracking message to PREMIUM group...")
+    
+    try:
+        await context.bot.send_message(
+            PREMIUM_GROUP_CHAT_ID,
+            "🔔 **IMPORTANT - KEEP YOUR ACCESS**\n\n"
+            "To maintain your PREMIUM group access, you need to:\n\n"
+            "1️⃣ Press /add_me in this bot DM\n"
+            "2️⃣ This registers you for auto-cleanup\n"
+            "3️⃣ Without it, you'll be restricted\n\n"
+            "👉 /start to open the bot\n"
+            "👉 /add_me to register\n\n"
+            "Don't worry - free access to FREE group always available!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await update.message.reply_text("✅ Message sent to PREMIUM group!")
+        logger.info("✅ Invite message sent to PREMIUM group")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+        logger.error(f"invite_all_cmd error: {e}")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.new_chat_member.status == "member":
@@ -200,8 +229,7 @@ async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_id = user.id
         add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
         add_group_member(user_id, update.effective_chat.id)
-        if update.effective_chat.id == FREE_GROUP_CHAT_ID:
-            await context.bot.send_message(update.effective_chat.id, f"👋 Welcome {user.mention_html()}!", parse_mode=ParseMode.HTML)
+        logger.info(f"✅ New member added: {user_id}")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -220,7 +248,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Invalid Transaction ID")
 
 async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin cleanup - restrict users without subscription + send DM"""
+    """Admin manual cleanup - restrict users without subscription + send DM"""
     user_id = update.effective_user.id
     
     if user_id not in ADMIN_USER_IDS:
@@ -320,6 +348,7 @@ def main():
     app.add_handler(CommandHandler("info", info_cmd))
     app.add_handler(CommandHandler("add_me", add_me_cmd))
     app.add_handler(CommandHandler("cleanup", cleanup_cmd))
+    app.add_handler(CommandHandler("invite_all", invite_all_cmd))
     app.add_handler(ChatMemberHandler(handle_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     

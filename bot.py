@@ -26,7 +26,7 @@ SUBSCRIPTION_CURRENCY = "EUR"
 SUBSCRIPTION_DAYS = 30
 
 if not all([TELEGRAM_BOT_TOKEN, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET]):
-    raise ValueError("❌ MISSING CONFIG")
+    raise ValueError("❌ CONFIG LIPSĂ")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def get_paypal_token():
         if resp.status_code == 200:
             return resp.json()["access_token"]
     except Exception as e:
-        logger.error(f"Token error: {e}")
+        logger.error(f"Eroare token: {e}")
     return None
 
 def verify_transaction(transaction_id):
@@ -150,31 +150,31 @@ def verify_transaction(transaction_id):
             if data.get("transaction_details") and data["transaction_details"][0].get("status") == "S":
                 return True
     except Exception as e:
-        logger.error(f"Verify error: {e}")
+        logger.error(f"Eroare verificare: {e}")
     return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
-    add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
+    add_user(user_id, user.username or "N/A", user.first_name or "Utilizator", user.last_name or "")
     status = get_subscription_status(user_id)
     if status == "active":
         days = get_days_remaining(user_id)
-        await update.message.reply_text(f"✅ Active subscription! ({days} days left)\n\n🔗 {PREMIUM_GROUP_LINK}")
+        await update.message.reply_text(f"✅ Abonament activ! ({days} zile rămase)\n\n🔗 {PREMIUM_GROUP_LINK}")
     else:
         await update.message.reply_text(
-            f"💎 Premium: {SUBSCRIPTION_PRICE} EUR/month, {SUBSCRIPTION_DAYS} days\n\nClick below:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💳 Pay on PayPal", url=PAYPAL_PAYMENT_LINK)]])
+            f"💎 PREMIUM: {SUBSCRIPTION_PRICE} EUR/lună\n⏰ Durată: {SUBSCRIPTION_DAYS} zile\n\nApasă butonul de mai jos:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💳 Plătește pe PayPal", url=PAYPAL_PAYMENT_LINK)]])
         )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "/start - Buy subscription\n"
-        "/status - Check status\n"
-        "/info - Premium info\n"
-        "/add_me - Register for cleanup\n"
-        "/cleanup - Manual cleanup\n"
-        "/invite_all - Send tracking msg"
+        "/start - Cumpără abonament\n"
+        "/status - Verifică status\n"
+        "/info - Informații PREMIUM\n"
+        "/add_me - Înregistrează-te pentru cleanup\n"
+        "/cleanup - Cleanup manual\n"
+        "/invite_all - Trimite mesaj de tracking"
     )
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,64 +182,64 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = get_subscription_status(user_id)
     if status == "active":
         days = get_days_remaining(user_id)
-        await update.message.reply_text(f"✅ ACTIVE ({days} days)")
+        await update.message.reply_text(f"✅ ACTIV ({days} zile rămase)")
     else:
-        await update.message.reply_text("❌ No subscription")
+        await update.message.reply_text("❌ Fără abonament")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"💰 {SUBSCRIPTION_PRICE} EUR/month\n⏰ {SUBSCRIPTION_DAYS} days")
+    await update.message.reply_text(f"💰 {SUBSCRIPTION_PRICE} EUR/lună\n⏰ {SUBSCRIPTION_DAYS} zile de acces")
 
 async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
-    add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
+    add_user(user_id, user.username or "N/A", user.first_name or "Utilizator", user.last_name or "")
     add_group_member(user_id, PREMIUM_GROUP_CHAT_ID)
-    await update.message.reply_text("✅ You're registered!")
+    await update.message.reply_text("✅ Te-ai înregistrat! Ești urmărit pentru cleanup automat.")
 
 async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"🔔 /invite_all called by user_id: {update.effective_user.id}")
+    logger.info(f"🔔 /invite_all apelat de: {update.effective_user.id}")
     
     user_id = update.effective_user.id
     if user_id not in ADMIN_USER_IDS:
-        msg = f"❌ NOT ADMIN. Your ID: {user_id}"
+        msg = f"❌ NU EȘTI ADMIN. ID-ul tău: {user_id}"
         logger.warning(msg)
         await update.message.reply_text(msg)
         return
     
-    await update.message.reply_text("📢 Sending message to PREMIUM group...")
+    await update.message.reply_text("📢 Se trimite mesaj în grupul PREMIUM...")
     
     try:
         await context.bot.send_message(
             PREMIUM_GROUP_CHAT_ID,
-            "🔔 **IMPORTANT - KEEP YOUR ACCESS**\n\n"
-            "To maintain your PREMIUM group access, you need to:\n\n"
-            "1️⃣ Press /add_me in this bot DM\n"
-            "2️⃣ This registers you for auto-cleanup\n"
-            "3️⃣ Without it, you'll be restricted\n\n"
-            "👉 /start to open the bot\n"
-            "👉 /add_me to register",
+            "🔔 **IMPORTANT - PĂSTREAZĂ ACCESUL**\n\n"
+            "Pentru a menține accesul la grupul PREMIUM, trebuie să:\n\n"
+            "1️⃣ Apasă /add_me în DM-ul botului\n"
+            "2️⃣ Asta te înregistrează pentru auto-cleanup\n"
+            "3️⃣ Fără asta, vei fi restricționat\n\n"
+            "👉 /start pentru a deschide botul\n"
+            "👉 /add_me pentru a te înregistra",
             parse_mode=ParseMode.MARKDOWN
         )
-        await update.message.reply_text("✅ Message sent!")
-        logger.info("✅ Invite message sent to PREMIUM group")
+        await update.message.reply_text("✅ Mesajul a fost trimis!")
+        logger.info("✅ Mesaj de invitație trimis în grupul PREMIUM")
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await update.message.reply_text(f"❌ Error: {e}")
+        logger.error(f"Eroare: {e}")
+        await update.message.reply_text(f"❌ Eroare: {e}")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle new members joining group"""
+    """Gestionează membri noi în grup"""
     if update.chat_member.new_chat_member.status == "member":
         user = update.chat_member.new_chat_member.user
         user_id = user.id
-        first_name = user.first_name or "Friend"
+        first_name = user.first_name or "Prieten"
         username = user.username or "N/A"
         
         add_user(user_id, username, first_name, user.last_name or "")
         add_group_member(user_id, update.effective_chat.id)
         
-        logger.info(f"✅ New member: {first_name} ({user_id}) joined group {update.effective_chat.id}")
+        logger.info(f"✅ Membru nou: {first_name} ({user_id}) a intrat în grup")
         
-        # Welcome message sa FREE group
+        # Mesaj de bun venit pentru grupul FREE
         if update.effective_chat.id == FREE_GROUP_CHAT_ID:
             welcome_msg = (
                 f"👋 **Bine ai venit, {first_name}!**\n\n"
@@ -250,7 +250,7 @@ async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"• Acces complet la conținut exclusiv\n\n"
                 f"🚀 **Cum să obții PREMIUM:**\n"
                 f"1️⃣ Deschide botul: /start\n"
-                f"2️⃣ Apasă butonul \"💳 Pay on PayPal\"\n"
+                f"2️⃣ Apasă butonul \"💳 Plătește pe PayPal\"\n"
                 f"3️⃣ Efectuează plata\n"
                 f"4️⃣ Primești acces instant!\n\n"
                 f"❓ Întrebări? Contactează admin-ul grupului.\n\n"
@@ -263,13 +263,13 @@ async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     welcome_msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("💳 Buy PREMIUM", url=PAYPAL_PAYMENT_LINK)],
-                        [InlineKeyboardButton("📖 More Info", callback_data="info")]
+                        [InlineKeyboardButton("💳 Cumpără PREMIUM", url=PAYPAL_PAYMENT_LINK)],
+                        [InlineKeyboardButton("📖 Mai Mult Info", callback_data="info")]
                     ])
                 )
-                logger.info(f"✅ Welcome DM sent to {first_name}")
+                logger.info(f"✅ Mesaj de bun venit trimis lui {first_name}")
             except Exception as e:
-                logger.warning(f"Could not send welcome DM to {user_id}: {e}")
+                logger.warning(f"Nu s-a putut trimite mesajul de bun venit lui {user_id}: {e}")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -282,40 +282,40 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, user_id, ChatPermissions(can_send_messages=True))
             except:
                 pass
-            await update.message.reply_text(f"✅ Payment confirmed!")
+            await update.message.reply_text(f"✅ Plata confirmată!\n💎 Acces {SUBSCRIPTION_DAYS} zile activat!")
             context.user_data.pop('awaiting_tx_id', None)
         else:
-            await update.message.reply_text("❌ Invalid TX ID")
+            await update.message.reply_text("❌ ID tranzacție invalid!")
 
 async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("❌ No permission")
+        await update.message.reply_text("❌ Acces interzis")
         return
-    await update.message.reply_text("⏳ Cleanup started...")
+    await update.message.reply_text("⏳ Cleanup inițiat...")
 
 async def run_cleanup(bot):
     try:
         members = get_premium_members()
         if not members:
-            logger.warning("No members for cleanup")
+            logger.warning("Niciun membru pentru cleanup")
             return
         for member_id in members:
             status = get_subscription_status(member_id)
             if status != "active":
                 try:
                     await bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, member_id, ChatPermissions(can_send_messages=False))
-                    await bot.send_message(member_id, "🚨 Subscription expired!")
+                    await bot.send_message(member_id, "🚨 Abonamentul a expirat!")
                 except:
                     pass
     except Exception as e:
-        logger.error(f"Cleanup error: {e}")
+        logger.error(f"Eroare cleanup: {e}")
 
 async def send_reminders(app):
     pass
 
 def main():
-    logger.info("🚀 Bot starting...")
+    logger.info("🚀 Bot pornit...")
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))

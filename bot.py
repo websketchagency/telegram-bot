@@ -31,6 +31,10 @@ if not all([TELEGRAM_BOT_TOKEN, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET]):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+logger.info(f"✅ ADMIN_USER_IDS: {ADMIN_USER_IDS}")
+logger.info(f"✅ PREMIUM_GROUP_CHAT_ID: {PREMIUM_GROUP_CHAT_ID}")
+logger.info(f"✅ FREE_GROUP_CHAT_ID: {FREE_GROUP_CHAT_ID}")
+
 DB_PATH = "subscriptions.db"
 
 def init_db():
@@ -116,7 +120,7 @@ def get_premium_members():
     conn.close()
     return result
 
-PAYPAL_BASE_URL = "https://api.sandbox.paypal.com" if PAYPAL_MODE == "sandbox" else "https://api.paypal.com"
+PAYPAL_BASE_URL = "https://api.paypal.com" if PAYPAL_MODE == "live" else "https://api.sandbox.paypal.com"
 
 def get_paypal_token():
     try:
@@ -171,7 +175,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status - Check status\n"
         "/info - Premium info\n"
         "/add_me - Register for cleanup tracking\n"
-        "/cleanup - Admin: manual cleanup"
+        "/cleanup - Admin: manual cleanup\n"
+        "/invite_all - Admin: send tracking msg"
     )
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,15 +202,19 @@ async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: Send tracking message to PREMIUM group"""
     user_id = update.effective_user.id
+    logger.info(f"🔔 /invite_all called by user_id: {user_id}")
+    logger.info(f"📋 ADMIN_USER_IDS: {ADMIN_USER_IDS}")
     
     if user_id not in ADMIN_USER_IDS:
-        await update.message.reply_text("❌ No permission")
+        logger.warning(f"❌ Permission denied for user {user_id}")
+        await update.message.reply_text(f"❌ No permission. Your ID: {user_id}")
         return
     
+    logger.info(f"✅ Permission OK for user {user_id}")
     await update.message.reply_text("📢 Sending tracking message to PREMIUM group...")
     
     try:
-        await context.bot.send_message(
+        result = await context.bot.send_message(
             PREMIUM_GROUP_CHAT_ID,
             "🔔 **IMPORTANT - KEEP YOUR ACCESS**\n\n"
             "To maintain your PREMIUM group access, you need to:\n\n"
@@ -218,10 +227,10 @@ async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         await update.message.reply_text("✅ Message sent to PREMIUM group!")
-        logger.info("✅ Invite message sent to PREMIUM group")
+        logger.info(f"✅ Invite message sent to PREMIUM group (msg_id: {result.message_id})")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
-        logger.error(f"invite_all_cmd error: {e}")
+        logger.error(f"invite_all_cmd error: {e}", exc_info=True)
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.new_chat_member.status == "member":

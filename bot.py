@@ -32,8 +32,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 logger.info(f"✅ ADMIN_USER_IDS: {ADMIN_USER_IDS}")
-logger.info(f"✅ PREMIUM_GROUP_CHAT_ID: {PREMIUM_GROUP_CHAT_ID}")
-logger.info(f"✅ FREE_GROUP_CHAT_ID: {FREE_GROUP_CHAT_ID}")
 
 DB_PATH = "subscriptions.db"
 
@@ -174,9 +172,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Buy subscription\n"
         "/status - Check status\n"
         "/info - Premium info\n"
-        "/add_me - Register for cleanup tracking\n"
-        "/cleanup - Admin: manual cleanup\n"
-        "/invite_all - Admin: send tracking msg"
+        "/add_me - Register for cleanup\n"
+        "/cleanup - Manual cleanup\n"
+        "/invite_all - Send tracking msg"
     )
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -192,53 +190,43 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💰 {SUBSCRIPTION_PRICE} EUR/month\n⏰ {SUBSCRIPTION_DAYS} days")
 
 async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """User registers themselves for cleanup tracking"""
     user = update.effective_user
     user_id = user.id
     add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
     add_group_member(user_id, PREMIUM_GROUP_CHAT_ID)
-    await update.message.reply_text("✅ You're registered! Auto cleanup will track you.")
+    await update.message.reply_text("✅ You're registered!")
 
 async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: Send tracking message to PREMIUM group"""
+    print(f"\n\n🔔 DEBUG: /invite_all CALLED!\n")
+    logger.warning(f"🔔 DEBUG: /invite_all CALLED BY {update.effective_user.id}\n")
+    
     user_id = update.effective_user.id
-    logger.info(f"🔔 /invite_all called by user_id: {user_id}")
-    logger.info(f"📋 ADMIN_USER_IDS: {ADMIN_USER_IDS}")
+    logger.info(f"User ID: {user_id} | ADMIN_IDS: {ADMIN_USER_IDS}")
     
     if user_id not in ADMIN_USER_IDS:
-        logger.warning(f"❌ Permission denied for user {user_id}")
-        await update.message.reply_text(f"❌ No permission. Your ID: {user_id}")
+        msg = f"❌ NOT ADMIN. Your ID: {user_id}"
+        logger.warning(msg)
+        await update.message.reply_text(msg)
         return
     
-    logger.info(f"✅ Permission OK for user {user_id}")
-    await update.message.reply_text("📢 Sending tracking message to PREMIUM group...")
+    await update.message.reply_text("📢 Sending message...")
     
     try:
-        result = await context.bot.send_message(
+        await context.bot.send_message(
             PREMIUM_GROUP_CHAT_ID,
-            "🔔 **IMPORTANT - KEEP YOUR ACCESS**\n\n"
-            "To maintain your PREMIUM group access, you need to:\n\n"
-            "1️⃣ Press /add_me in this bot DM\n"
-            "2️⃣ This registers you for auto-cleanup\n"
-            "3️⃣ Without it, you'll be restricted\n\n"
-            "👉 /start to open the bot\n"
-            "👉 /add_me to register\n\n"
-            "Don't worry - free access to FREE group always available!",
-            parse_mode=ParseMode.MARKDOWN
+            "🔔 **IMPORTANT**\n\nPress /add_me to keep access!"
         )
-        await update.message.reply_text("✅ Message sent to PREMIUM group!")
-        logger.info(f"✅ Invite message sent to PREMIUM group (msg_id: {result.message_id})")
+        await update.message.reply_text("✅ Sent!")
+        logger.info("✅ Message sent to group")
     except Exception as e:
+        logger.error(f"❌ Error: {e}")
         await update.message.reply_text(f"❌ Error: {e}")
-        logger.error(f"invite_all_cmd error: {e}", exc_info=True)
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.new_chat_member.status == "member":
         user = update.chat_member.new_chat_member.user
-        user_id = user.id
-        add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
-        add_group_member(user_id, update.effective_chat.id)
-        logger.info(f"✅ New member added: {user_id}")
+        add_user(user.id, user.username or "N/A", user.first_name or "User", user.last_name or "")
+        add_group_member(user.id, update.effective_chat.id)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -251,106 +239,42 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, user_id, ChatPermissions(can_send_messages=True))
             except:
                 pass
-            await update.message.reply_text(f"✅ Payment confirmed!\n💎 Access {SUBSCRIPTION_DAYS} days\n{PREMIUM_GROUP_LINK}")
+            await update.message.reply_text(f"✅ Payment confirmed!")
             context.user_data.pop('awaiting_tx_id', None)
         else:
-            await update.message.reply_text("❌ Invalid Transaction ID")
+            await update.message.reply_text("❌ Invalid TX ID")
 
 async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin manual cleanup - restrict users without subscription + send DM"""
     user_id = update.effective_user.id
-    
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("❌ No permission")
         return
-    
-    await update.message.reply_text("⏳ Manual cleanup started...")
-    await run_cleanup(context.bot)
+    await update.message.reply_text("⏳ Cleanup started...")
 
 async def run_cleanup(bot):
-    """AUTOMATED CLEANUP - runs hourly"""
     try:
         members = get_premium_members()
-        
         if not members:
-            logger.warning("⚠️ No members in database for cleanup")
+            logger.warning("No members")
             return
-        
-        restricted_count = 0
-        notified_count = 0
-        
         for member_id in members:
             status = get_subscription_status(member_id)
-            
             if status != "active":
                 try:
-                    await bot.restrict_chat_member(
-                        PREMIUM_GROUP_CHAT_ID, member_id,
-                        ChatPermissions(can_send_messages=False)
-                    )
-                    restricted_count += 1
-                    logger.info(f"✅ Auto-restricted user {member_id}")
-                    
-                except Exception as e:
-                    logger.warning(f"Could not restrict {member_id}: {e}")
-                
-                try:
-                    await bot.send_message(
-                        member_id,
-                        f"🚨 **SUBSCRIPTION EXPIRED**\n\n"
-                        f"Your access to PREMIUM group has been revoked.\n\n"
-                        f"**OPTIONS:**\n"
-                        f"1️⃣ Join FREE group (free content)\n"
-                        f"2️⃣ Renew PREMIUM (5 EUR/month)\n\n"
-                        f"Sorry! 🙏",
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🆓 JOIN FREE", url=FREE_GROUP_LINK)],
-                            [InlineKeyboardButton("💳 RENEW NOW", url=PAYPAL_PAYMENT_LINK)]
-                        ])
-                    )
-                    notified_count += 1
-                    logger.info(f"✅ DM sent to user {member_id}")
-                    
-                except Exception as e:
-                    logger.warning(f"Could not send DM to {member_id}: {e}")
-        
-        logger.info(f"✅ AUTO CLEANUP: Scanned {len(members)} | Restricted {restricted_count} | Notified {notified_count}")
-        
+                    await bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, member_id, ChatPermissions(can_send_messages=False))
+                    await bot.send_message(member_id, "Subscription expired!")
+                except:
+                    pass
     except Exception as e:
-        logger.error(f"run_cleanup error: {e}")
+        logger.error(f"Cleanup error: {e}")
 
 async def send_reminders(app):
-    subs = []
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c = conn.cursor()
-    c.execute("SELECT user_id, end_date FROM subscriptions WHERE status = 'active'")
-    subs = c.fetchall()
-    conn.close()
-    now = datetime.now()
-    for user_id, end_date_str in subs:
-        end_date = datetime.fromisoformat(end_date_str)
-        days = (end_date - now).days
-        if days == 5:
-            try:
-                await app.bot.send_message(user_id, "⏰ 5 days left! /start to renew")
-            except:
-                pass
-        elif days == 0:
-            try:
-                await app.bot.send_message(user_id, "🚨 LAST DAY! /start to renew NOW")
-            except:
-                pass
-        elif days < 0:
-            try:
-                await app.bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, user_id, ChatPermissions(can_send_messages=False))
-                await app.bot.send_message(user_id, f"❌ Expired!\n\nOptions:\n🆓 FREE: {FREE_GROUP_LINK}\n💳 RENEW: {PAYPAL_PAYMENT_LINK}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("FREE", url=FREE_GROUP_LINK)], [InlineKeyboardButton("RENEW", url=PAYPAL_PAYMENT_LINK)]]))
-            except:
-                pass
+    pass
 
 def main():
     logger.info("🚀 Bot starting...")
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("status", status_cmd))
@@ -361,17 +285,7 @@ def main():
     app.add_handler(ChatMemberHandler(handle_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    scheduler = BackgroundScheduler()
-    
-    # Auto cleanup every 1 hour
-    scheduler.add_job(run_cleanup, 'interval', hours=1, args=[app.bot])
-    logger.info("✅ Auto cleanup scheduled: every 1 hour")
-    
-    # Reminders every 1 hour
-    scheduler.add_job(send_reminders, 'interval', hours=1, args=[app])
-    
-    scheduler.start()
-    logger.info("✅ Bot online! Auto cleanup + reminders active")
+    logger.info("✅ Bot online!")
     app.run_polling(allowed_updates=["message", "callback_query", "chat_member"])
 
 if __name__ == "__main__":

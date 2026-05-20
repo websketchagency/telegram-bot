@@ -197,36 +197,79 @@ async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ You're registered!")
 
 async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"\n\n🔔 DEBUG: /invite_all CALLED!\n")
-    logger.warning(f"🔔 DEBUG: /invite_all CALLED BY {update.effective_user.id}\n")
+    logger.info(f"🔔 /invite_all called by user_id: {update.effective_user.id}")
     
     user_id = update.effective_user.id
-    logger.info(f"User ID: {user_id} | ADMIN_IDS: {ADMIN_USER_IDS}")
-    
     if user_id not in ADMIN_USER_IDS:
         msg = f"❌ NOT ADMIN. Your ID: {user_id}"
         logger.warning(msg)
         await update.message.reply_text(msg)
         return
     
-    await update.message.reply_text("📢 Sending message...")
+    await update.message.reply_text("📢 Sending message to PREMIUM group...")
     
     try:
         await context.bot.send_message(
             PREMIUM_GROUP_CHAT_ID,
-            "🔔 **IMPORTANT**\n\nPress /add_me to keep access!"
+            "🔔 **IMPORTANT - KEEP YOUR ACCESS**\n\n"
+            "To maintain your PREMIUM group access, you need to:\n\n"
+            "1️⃣ Press /add_me in this bot DM\n"
+            "2️⃣ This registers you for auto-cleanup\n"
+            "3️⃣ Without it, you'll be restricted\n\n"
+            "👉 /start to open the bot\n"
+            "👉 /add_me to register",
+            parse_mode=ParseMode.MARKDOWN
         )
-        await update.message.reply_text("✅ Sent!")
-        logger.info("✅ Message sent to group")
+        await update.message.reply_text("✅ Message sent!")
+        logger.info("✅ Invite message sent to PREMIUM group")
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        logger.error(f"Error: {e}")
         await update.message.reply_text(f"❌ Error: {e}")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle new members joining group"""
     if update.chat_member.new_chat_member.status == "member":
         user = update.chat_member.new_chat_member.user
-        add_user(user.id, user.username or "N/A", user.first_name or "User", user.last_name or "")
-        add_group_member(user.id, update.effective_chat.id)
+        user_id = user.id
+        first_name = user.first_name or "Friend"
+        username = user.username or "N/A"
+        
+        add_user(user_id, username, first_name, user.last_name or "")
+        add_group_member(user_id, update.effective_chat.id)
+        
+        logger.info(f"✅ New member: {first_name} ({user_id}) joined group {update.effective_chat.id}")
+        
+        # Welcome message sa FREE group
+        if update.effective_chat.id == FREE_GROUP_CHAT_ID:
+            welcome_msg = (
+                f"👋 **Bine ai venit, {first_name}!**\n\n"
+                f"📌 **Ești în grupul FREE** - conținut gratuit\n\n"
+                f"💎 **Vrei PREMIUM?**\n"
+                f"• Preț: **{SUBSCRIPTION_PRICE} EUR/lună**\n"
+                f"• Durată: **{SUBSCRIPTION_DAYS} zile**\n"
+                f"• Acces complet la conținut exclusiv\n\n"
+                f"🚀 **Cum să obții PREMIUM:**\n"
+                f"1️⃣ Deschide botul: /start\n"
+                f"2️⃣ Apasă butonul \"💳 Pay on PayPal\"\n"
+                f"3️⃣ Efectuează plata\n"
+                f"4️⃣ Primești acces instant!\n\n"
+                f"❓ Întrebări? Contactează admin-ul grupului.\n\n"
+                f"Enjoy! 🎉"
+            )
+            
+            try:
+                await context.bot.send_message(
+                    user_id,
+                    welcome_msg,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("💳 Buy PREMIUM", url=PAYPAL_PAYMENT_LINK)],
+                        [InlineKeyboardButton("📖 More Info", callback_data="info")]
+                    ])
+                )
+                logger.info(f"✅ Welcome DM sent to {first_name}")
+            except Exception as e:
+                logger.warning(f"Could not send welcome DM to {user_id}: {e}")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -255,14 +298,14 @@ async def run_cleanup(bot):
     try:
         members = get_premium_members()
         if not members:
-            logger.warning("No members")
+            logger.warning("No members for cleanup")
             return
         for member_id in members:
             status = get_subscription_status(member_id)
             if status != "active":
                 try:
                     await bot.restrict_chat_member(PREMIUM_GROUP_CHAT_ID, member_id, ChatPermissions(can_send_messages=False))
-                    await bot.send_message(member_id, "Subscription expired!")
+                    await bot.send_message(member_id, "🚨 Subscription expired!")
                 except:
                     pass
     except Exception as e:

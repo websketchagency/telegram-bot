@@ -192,7 +192,7 @@ async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
     add_group_member(user_id, PREMIUM_GROUP_CHAT_ID)
-    await update.message.reply_text("✅ You're registered! You'll be checked in /cleanup")
+    await update.message.reply_text("✅ You're registered! You'll be checked in auto cleanup")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.new_chat_member.status == "member":
@@ -227,19 +227,16 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No permission")
         return
     
-    await update.message.reply_text("⏳ Scanning PREMIUM members from database...")
-    
+    await update.message.reply_text("⏳ Manual cleanup started...")
+    await run_cleanup(context.bot)
+
+async def run_cleanup(bot):
+    """AUTOMATED CLEANUP - runs hourly"""
     try:
         members = get_premium_members()
         
         if not members:
-            await update.message.reply_text(
-                "⚠️ No members in database!\n\n"
-                "Members get added when they:\n"
-                "1. Join PREMIUM group via /start → PayPal payment\n"
-                "2. Press /add_me to register\n\n"
-                "Current PREMIUM group members: 0"
-            )
+            logger.warning("⚠️ No members in database for cleanup")
             return
         
         restricted_count = 0
@@ -250,18 +247,18 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if status != "active":
                 try:
-                    await context.bot.restrict_chat_member(
+                    await bot.restrict_chat_member(
                         PREMIUM_GROUP_CHAT_ID, member_id,
                         ChatPermissions(can_send_messages=False)
                     )
                     restricted_count += 1
-                    logger.info(f"✅ Restricted user {member_id}")
+                    logger.info(f"✅ Auto-restricted user {member_id}")
                     
                 except Exception as e:
                     logger.warning(f"Could not restrict {member_id}: {e}")
                 
                 try:
-                    await context.bot.send_message(
+                    await bot.send_message(
                         member_id,
                         f"🚨 **SUBSCRIPTION EXPIRED**\n\n"
                         f"Your access to PREMIUM group has been revoked.\n\n"
@@ -281,18 +278,10 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.warning(f"Could not send DM to {member_id}: {e}")
         
-        await update.message.reply_text(
-            f"✅ **CLEANUP COMPLETED**\n\n"
-            f"👥 Members scanned: {len(members)}\n"
-            f"❌ Restricted: {restricted_count}\n"
-            f"📢 Notified: {notified_count}\n\n"
-            f"Expired users moved to FREE group with renewal link.",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        logger.info(f"✅ AUTO CLEANUP: Scanned {len(members)} | Restricted {restricted_count} | Notified {notified_count}")
         
     except Exception as e:
-        logger.error(f"cleanup_cmd error: {e}")
-        await update.message.reply_text(f"❌ Error: {e}")
+        logger.error(f"run_cleanup error: {e}")
 
 async def send_reminders(app):
     subs = []
@@ -333,10 +322,18 @@ def main():
     app.add_handler(CommandHandler("cleanup", cleanup_cmd))
     app.add_handler(ChatMemberHandler(handle_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    
     scheduler = BackgroundScheduler()
+    
+    # Auto cleanup every 1 hour
+    scheduler.add_job(run_cleanup, 'interval', hours=1, args=[app.bot])
+    logger.info("✅ Auto cleanup scheduled: every 1 hour")
+    
+    # Reminders every 1 hour
     scheduler.add_job(send_reminders, 'interval', hours=1, args=[app])
+    
     scheduler.start()
-    logger.info("✅ Bot online!")
+    logger.info("✅ Bot online! Auto cleanup + reminders active")
     app.run_polling(allowed_updates=["message", "callback_query", "chat_member"])
 
 if __name__ == "__main__":

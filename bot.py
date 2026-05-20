@@ -227,49 +227,49 @@ async def invite_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Eroare: {e}")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestionează membri noi în grup"""
+    """Gestionează membri noi în grup - MESAJ PUBLIC ÎN GRUP"""
     if update.chat_member.new_chat_member.status == "member":
         user = update.chat_member.new_chat_member.user
         user_id = user.id
         first_name = user.first_name or "Prieten"
-        username = user.username or "N/A"
+        username = user.username or ""
         
         add_user(user_id, username, first_name, user.last_name or "")
         add_group_member(user_id, update.effective_chat.id)
         
         logger.info(f"✅ Membru nou: {first_name} ({user_id}) a intrat în grup")
         
-        # Mesaj de bun venit pentru grupul FREE
+        # MESAJ PUBLIC ÎN GRUP PENTRU FIECARE MEMBRU NOU
         if update.effective_chat.id == FREE_GROUP_CHAT_ID:
+            mention = f"@{username}" if username else first_name
+            
             welcome_msg = (
-                f"👋 **Bine ai venit, {first_name}!**\n\n"
-                f"📌 **Ești în grupul FREE** - conținut gratuit\n\n"
-                f"💎 **Vrei PREMIUM?**\n"
-                f"• Preț: **{SUBSCRIPTION_PRICE} EUR/lună**\n"
-                f"• Durată: **{SUBSCRIPTION_DAYS} zile**\n"
-                f"• Acces complet la conținut exclusiv\n\n"
+                f"👋 **Bine ai venit, {mention}!**\n\n"
+                f"📌 Ești în grupul **FREE** - conținut gratuit zilnic\n\n"
+                f"💎 **VREI PREMIUM?**\n"
+                f"✨ Acces complet la conținut exclusiv\n"
+                f"💰 Preț: **{SUBSCRIPTION_PRICE} EUR/lună**\n"
+                f"⏰ Durată: **{SUBSCRIPTION_DAYS} zile**\n\n"
                 f"🚀 **Cum să obții PREMIUM:**\n"
-                f"1️⃣ Deschide botul: /start\n"
-                f"2️⃣ Apasă butonul \"💳 Plătește pe PayPal\"\n"
+                f"1️⃣ Apasă /start în bot\n"
+                f"2️⃣ Alege \"💳 Plătește pe PayPal\"\n"
                 f"3️⃣ Efectuează plata\n"
                 f"4️⃣ Primești acces instant!\n\n"
-                f"❓ Întrebări? Contactează admin-ul grupului.\n\n"
                 f"Enjoy! 🎉"
             )
             
             try:
                 await context.bot.send_message(
-                    user_id,
+                    FREE_GROUP_CHAT_ID,
                     welcome_msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("💳 Cumpără PREMIUM", url=PAYPAL_PAYMENT_LINK)],
-                        [InlineKeyboardButton("📖 Mai Mult Info", callback_data="info")]
+                        [InlineKeyboardButton("💳 Cumpără PREMIUM", url=PAYPAL_PAYMENT_LINK)]
                     ])
                 )
-                logger.info(f"✅ Mesaj de bun venit trimis lui {first_name}")
+                logger.info(f"✅ Mesaj de bun venit PUBLIC trimis pentru {first_name}")
             except Exception as e:
-                logger.warning(f"Nu s-a putut trimite mesajul de bun venit lui {user_id}: {e}")
+                logger.warning(f"Nu s-a putut trimite mesajul public în grup: {e}")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id

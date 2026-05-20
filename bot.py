@@ -166,7 +166,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("/start - Buy\n/status - Status\n/info - Info\n/cleanup - Admin cleanup")
+    await update.message.reply_text(
+        "/start - Buy subscription\n"
+        "/status - Check status\n"
+        "/info - Premium info\n"
+        "/add_me - Register for cleanup tracking\n"
+        "/cleanup - Admin: cleanup"
+    )
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -179,6 +185,14 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💰 {SUBSCRIPTION_PRICE} EUR/month\n⏰ {SUBSCRIPTION_DAYS} days")
+
+async def add_me_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User registers themselves for cleanup tracking"""
+    user = update.effective_user
+    user_id = user.id
+    add_user(user_id, user.username or "N/A", user.first_name or "User", user.last_name or "")
+    add_group_member(user_id, PREMIUM_GROUP_CHAT_ID)
+    await update.message.reply_text("✅ You're registered! You'll be checked in /cleanup")
 
 async def handle_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.chat_member.new_chat_member.status == "member":
@@ -209,7 +223,6 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin cleanup - restrict users without subscription + send DM"""
     user_id = update.effective_user.id
     
-    # CHECK ADMIN PERMISSION
     if user_id not in ADMIN_USER_IDS:
         await update.message.reply_text("❌ No permission")
         return
@@ -217,7 +230,6 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Scanning PREMIUM members from database...")
     
     try:
-        # GET MEMBERS FROM DATABASE
         members = get_premium_members()
         
         if not members:
@@ -225,7 +237,7 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ No members in database!\n\n"
                 "Members get added when they:\n"
                 "1. Join PREMIUM group via /start → PayPal payment\n"
-                "2. Or manually added to group_members table\n\n"
+                "2. Press /add_me to register\n\n"
                 "Current PREMIUM group members: 0"
             )
             return
@@ -233,14 +245,11 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         restricted_count = 0
         notified_count = 0
         
-        # PROCESS EACH MEMBER
         for member_id in members:
             status = get_subscription_status(member_id)
             
-            # IF NO ACTIVE SUBSCRIPTION → RESTRICT + NOTIFY
             if status != "active":
                 try:
-                    # 1️⃣ RESTRICT in PREMIUM group
                     await context.bot.restrict_chat_member(
                         PREMIUM_GROUP_CHAT_ID, member_id,
                         ChatPermissions(can_send_messages=False)
@@ -252,7 +261,6 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"Could not restrict {member_id}: {e}")
                 
                 try:
-                    # 2️⃣ SEND DM with options
                     await context.bot.send_message(
                         member_id,
                         f"🚨 **SUBSCRIPTION EXPIRED**\n\n"
@@ -273,7 +281,6 @@ async def cleanup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.warning(f"Could not send DM to {member_id}: {e}")
         
-        # 3️⃣ SEND ADMIN REPORT
         await update.message.reply_text(
             f"✅ **CLEANUP COMPLETED**\n\n"
             f"👥 Members scanned: {len(members)}\n"
@@ -322,6 +329,7 @@ def main():
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("info", info_cmd))
+    app.add_handler(CommandHandler("add_me", add_me_cmd))
     app.add_handler(CommandHandler("cleanup", cleanup_cmd))
     app.add_handler(ChatMemberHandler(handle_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
